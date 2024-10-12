@@ -1,49 +1,41 @@
-import { MongoClient } from 'mongodb';
-import dotenv from 'dotenv';
-
-dotenv.config();
+const { MongoClient } = require('mongodb');
 
 class DBClient {
 	constructor() {
 		const host = process.env.DB_HOST || 'localhost';
 		const port = process.env.DB_PORT || 27017;
 		const database = process.env.DB_DATABASE || 'files_manager';
-		const url = `mongodb://${host}:${port}`;
+		const uri = `mongodb://${host}:${port}/${database}`;
 		
-		this.client = new MongoClient(url, { useUnifiedTopology: true });
-		this.client.connect()
-		.then(() => {
-			this.db = this.client.db(database);
-		})
-		.catch((err) => {
-			console.error('MongoDB connection error:', err);
-		});
+		this.client = new MongoClient(uri, { useNewUrlParser: true, useUnifiedTopology: true });
+		this.connected = false;
 	}
 
-	/**
-	 * Check if the MongoDB client is alive (connected).
-	 * @returns {boolean} true if connected, false otherwise.
-	 */
+	async connect() {
+		if (!this.connected) {
+			await this.client.connect();
+			this.connected = true;
+		}
+	}
+
 	isAlive() {
-		return this.client.isConnected();
+		return this.connected;
 	}
 
-	/**
-	 * Get the number of users in the users collection.
-	 * @returns {Promise<number>} The number of users.
-	 */
 	async nbUsers() {
-		return this.db.collection('users').countDocuments();
+		await this.connect();
+		const db = this.client.db();
+		const usersCount = await db.collection('users').countDocuments();
+		return usersCount;
 	}
 
-	/**
-	 * Get the number of files in the files collection.
-	 * @returns {Promise<number>} The number of files.
-	 */
 	async nbFiles() {
-		return this.db.collection('files').countDocuments();
+		await this.connect();
+		const db = this.client.db();
+		const filesCount = await db.collection('files').countDocuments();
+		return filesCount;
 	}
 }
 
 const dbClient = new DBClient();
-export default dbClient;
+module.exports = dbClient;
