@@ -1,38 +1,39 @@
-import { ObjectId } from 'mongodb';
-import crypto from 'crypto';
+import sha1 from 'sha1';
+import Queue from 'bull/lib/queue';
 import dbClient from '../utils/db';
 
-class UsersController {
-	static async postNew(req, res) {
-		const { email, password } = req.body;
+const userQueue = new Queue('email sending');
 
-		if (!email) {
-			return res.status(400).json({ error: 'Missing email' });
-		}
+export default class UsersController {
+  static async postNew(req, res) {
+    const email = req.body ? req.body.email : null;
+    const password = req.body ? req.body.password : null;
 
-		if (!password) {
-			return res.status(400).json({ error: 'Missing password' });
-		}
+    if (!email) {
+      res.status(400).json({ error: 'Missing email' });
+      return;
+    }
+    if (!password) {
+      res.status(400).json({ error: 'Missing password' });
+      return;
+    }
+    const user = await (await dbClient.usersCollection()).findOne({ email });
 
-		const userExists = await dbClient.db.collection('users').findOne({ email });
-		if (userExists) {
-			return res.status(400).json({ error: 'Already exist' });
-		}
+    if (user) {
+      res.status(400).json({ error: 'Already exist' });
+      return;
+    }
+    const insertionInfo = await (await dbClient.usersCollection())
+      .insertOne({ email, password: sha1(password) });
+    const userId = insertionInfo.insertedId.toString();
 
-		const sha1Password = crypto.createHash('sha1').update(password).digest('hex');
+    userQueue.add({ userId });
+    res.status(201).json({ email, id: userId });
+  }
 
-		const newUser = {
-			email,
-			password: sha1Password,
-		};
+  static async getMe(req, res) {
+    const { user } = req;
 
-		const result = await dbClient.db.collection('users').insertOne(newUser);
-
-		return res.status(201).json({
-			id: result.insertedId,
-			email: newUser.email,
-		});
-	}
+    res.status(200).json({ email: user.email, id: user._id.toString() });
+  }
 }
-
-export default UsersController;
